@@ -142,3 +142,13 @@ def get_chat_messages(chat_id: int, user_id: int):
     except Exception:
         messages = []
     return {"id": row["id"], "messages": messages}
+
+
+def delete_chat(chat_id: int, user_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM chat_history WHERE id = ? AND user_id = ?", (chat_id, user_id))
+    conn.commit()
+    deleted = cur.rowcount
+    conn.close()
+    return deleted > 0

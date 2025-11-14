@@ -8,7 +8,7 @@ from flask_cors import CORS
 import bcrypt
 import jwt
 
-from database import init_db, create_user, get_user_by_email, get_user_by_id, create_chat, update_chat, list_chats_for_user, get_chat_messages
+from database import init_db, create_user, get_user_by_email, get_user_by_id, create_chat, update_chat, list_chats_for_user, get_chat_messages, delete_chat
 import config
 
 # Initialize DB
@@ -127,6 +127,12 @@ def login():
     return jsonify({"access_token": token}), 200
 
 
+@app.route('/logout', methods=['POST'])
+def logout():
+    # Token validation is optional for logout; client just removes token from localStorage
+    return jsonify({"message": "Logout realizado com sucesso"}), 200
+
+
 @app.route('/history', methods=['GET'])
 @token_required
 def history():
@@ -143,6 +149,16 @@ def get_history(chat_id):
     if not chat:
         return jsonify({"error": "Chat não encontrado"}), 404
     return jsonify(chat), 200
+
+
+@app.route('/history/<int:chat_id>', methods=['DELETE'])
+@token_required
+def delete_history(chat_id):
+    user_id = request.user['id']
+    ok = delete_chat(chat_id, user_id)
+    if not ok:
+        return jsonify({"error": "Chat não encontrado"}), 404
+    return jsonify({"message": "Chat deletado com sucesso"}), 200
 
 
 @app.route('/chat', methods=['POST'])
