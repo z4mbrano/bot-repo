@@ -10,7 +10,7 @@ API_HISTORY_URL = f"{API_BASE_URL}/api/history"
 
 # Configurações do Google AI
 GOOGLE_API_KEY = "AIzaSyC5qEJ7TBSxndhoB3ZzogVxAbiCkqKg8TU"
-GOOGLE_AI_MODEL = "gemini-2.0-flash-exp"
+GOOGLE_AI_MODEL = "gemini-2.5-flash"
 
 # Configurações dos Bots
 BOT_TYPES = {
