@@ -152,3 +152,16 @@ def delete_chat(chat_id: int, user_id: int):
     deleted = cur.rowcount
     conn.close()
     return deleted > 0
+
+
+def update_chat_title(chat_id: int, user_id: int, title: str):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE chat_history SET title = ? WHERE id = ? AND user_id = ?",
+        (title, chat_id, user_id),
+    )
+    conn.commit()
+    updated = cur.rowcount
+    conn.close()
+    return updated > 0

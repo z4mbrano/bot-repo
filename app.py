@@ -9,7 +9,9 @@ import bcrypt
 import jwt
 
 from database import init_db, create_user, get_user_by_email, get_user_by_id, create_chat, update_chat, list_chats_for_user, get_chat_messages, delete_chat
+from database import update_chat_title
 import config
+import requests
 
 # Initialize DB
 init_db()
@@ -27,7 +29,8 @@ def handle_options_preflight():
     if request.method == 'OPTIONS':
         # Build an empty 200 response; `after_request` will add CORS headers as well.
         from flask import make_response
-        resp = make_response(('', 200))
+        # make_response expects (body, status) or body then status arg separately
+        resp = make_response('', 200)
         resp.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
         resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
@@ -175,8 +178,26 @@ def chat():
     if not bot_name or new_message is None:
         return jsonify({"error": "`bot_name` e `new_message` são obrigatórios"}), 400
 
-    # Simple placeholder bot logic - echo with bot name
-    bot_response = f"{bot_name} resposta automática: {new_message}"
+    # Try to obtain a response from the lightweight AI server (api.py)
+    api_port = int(os.environ.get('API_PORT', getattr(config, 'BACKEND_PORT', 5000) + 1))
+    api_url = f"http://127.0.0.1:{api_port}/api/chat"
+    bot_response = None
+
+    try:
+        payload = {"message": new_message, "bot_id": bot_name, "chat_id": chat_id or 'default'}
+        resp = requests.post(api_url, json=payload, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            # api.py returns {'message': text, 'bot_name': name, 'chat_id': id, 'bot_id': id}
+            bot_response = data.get('message') or data.get('response')
+        else:
+            app.logger.warning(f"Lightweight API returned status {resp.status_code}")
+    except Exception as e:
+        app.logger.warning(f"Error calling lightweight API at {api_url}: {e}")
+
+    # Fallback to simple echo if external API failed
+    if not bot_response:
+        bot_response = f"{bot_name} resposta automática: {new_message}"
 
     # Build new history
     new_history = list(history) if isinstance(history, list) else []
@@ -197,7 +218,21 @@ def chat():
     else:
         chat_id = create_chat(user_id, bot_name, title, new_history)
 
-    return jsonify({"response": bot_response, "chat_id": chat_id}), 200
+    return jsonify({"message": bot_response, "bot_name": bot_name, "chat_id": chat_id}), 200
+
+
+@app.route('/history/<int:chat_id>/title', methods=['PUT'])
+@token_required
+def update_title(chat_id):
+    user_id = request.user['id']
+    data = request.get_json() or {}
+    title = data.get('title')
+    if title is None:
+        return jsonify({"error": "title is required"}), 400
+    ok = update_chat_title(chat_id, user_id, title)
+    if not ok:
+        return jsonify({"error": "Chat não encontrado ou não autorizado"}), 404
+    return jsonify({"message": "Título atualizado"}), 200
 
 
 if __name__ == '__main__':

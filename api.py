@@ -234,6 +234,13 @@ def get_bots():
     return jsonify(bots_info)
 
 if __name__ == '__main__':
-    print(f"🚀 Iniciando servidor na porta {BACKEND_PORT}")
+    # Allow running this lightweight API on a different port than the main backend.
+    # Use the environment variable API_PORT to override, otherwise default to BACKEND_PORT+1
+    try:
+        api_port = int(os.environ.get('API_PORT', BACKEND_PORT + 1))
+    except Exception:
+        api_port = BACKEND_PORT + 1
+
+    print(f"🚀 Iniciando lightweight API na porta {api_port} (config BACKEND_PORT={BACKEND_PORT})")
     print(f"🔧 Modo debug: {DEBUG_MODE}")
-    app.run(debug=DEBUG_MODE, port=BACKEND_PORT, host='0.0.0.0')
+    app.run(debug=DEBUG_MODE, port=api_port, host='0.0.0.0')
