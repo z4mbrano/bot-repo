@@ -175,8 +175,33 @@ def chat():
     chat_id = data.get('chat_id')  # optional
     title = data.get('title')
 
-    if not bot_name or new_message is None:
-        return jsonify({"error": "`bot_name` e `new_message` são obrigatórios"}), 400
+    if not bot_name:
+        return jsonify({"error": "`bot_name` é obrigatório"}), 400
+
+    # Bot greeting messages (welcome messages)
+    bot_greetings = {
+        'querrybot': 'Olá! Sou o QuerryBot, especialista em soluções comerciais da Oracle Cloud. Como posso ajudá-lo a encontrar a melhor solução para seu negócio?',
+        'querryarc': 'Sou o QuerryArc, arquiteto de soluções Oracle Cloud. Estou aqui para ajudá-lo com questões técnicas, arquitetura e implementação. Como posso assistir?'
+    }
+
+    # If no message provided, this is a chat creation request (return greeting)
+    if new_message is None or new_message == '':
+        # Create empty chat with greeting message
+        greeting = bot_greetings.get(bot_name, f'Olá! Sou o {bot_name}. Como posso ajudá-lo?')
+        
+        # Title fallback
+        if not title:
+            title = f'Chat com {bot_name}'
+
+        # Create with just greeting
+        new_history = [{"role": "assistant", "content": greeting}]
+        chat_id = create_chat(user_id, bot_name, title, new_history)
+        
+        return jsonify({"message": greeting, "bot_name": bot_name, "chat_id": chat_id}), 200
+
+    # If message is provided, process it normally
+    if new_message is None:
+        return jsonify({"error": "`new_message` deve ser uma string"}), 400
 
     # Try to obtain a response from the lightweight AI server (api.py)
     api_port = int(os.environ.get('API_PORT', getattr(config, 'BACKEND_PORT', 5000) + 1))
@@ -185,18 +210,25 @@ def chat():
 
     try:
         payload = {"message": new_message, "bot_id": bot_name, "chat_id": chat_id or 'default'}
+        print(f"[app.py] Calling {api_url} with payload: {payload}")
         resp = requests.post(api_url, json=payload, timeout=10)
+        print(f"[app.py] Response status: {resp.status_code}")
         if resp.status_code == 200:
-            data = resp.json()
+            response_data = resp.json()
+            print(f"[app.py] Response data keys: {response_data.keys()}")
             # api.py returns {'message': text, 'bot_name': name, 'chat_id': id, 'bot_id': id}
-            bot_response = data.get('message') or data.get('response')
+            bot_response = response_data.get('message') or response_data.get('response')
+            print(f"[app.py] Extracted bot_response length: {len(bot_response) if bot_response else 0}")
         else:
+            print(f"[app.py] Lightweight API returned status {resp.status_code}")
             app.logger.warning(f"Lightweight API returned status {resp.status_code}")
     except Exception as e:
+        print(f"[app.py] Error calling lightweight API at {api_url}: {e}")
         app.logger.warning(f"Error calling lightweight API at {api_url}: {e}")
 
     # Fallback to simple echo if external API failed
     if not bot_response:
+        print(f"[app.py] Using fallback response (bot_response was empty)")
         bot_response = f"{bot_name} resposta automática: {new_message}"
 
     # Build new history
