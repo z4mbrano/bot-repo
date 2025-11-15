@@ -12,9 +12,101 @@ from database import init_db, create_user, get_user_by_email, get_user_by_id, cr
 from database import update_chat_title
 import config
 import requests
+import google.generativeai as genai
+import sys
 
 # Initialize DB
 init_db()
+
+# --- Google AI setup and in-memory chat history (merged from api.py) ---
+try:
+    if getattr(config, 'GOOGLE_API_KEY', None):
+        genai.configure(api_key=getattr(config, 'GOOGLE_API_KEY'))
+        print("✅ Google AI configurado com sucesso (app unified)")
+    else:
+        print("❌ GOOGLE_API_KEY não configurada (app unified)")
+except Exception as e:
+    print(f"❌ Erro ao configurar API (app unified): {e}")
+
+chat_history = {}
+
+# Minimal bot configs copied from api.py
+bot_configs = {
+    'querrybot': {
+        'name': 'Oracle QueryBot',
+        'instructions': """
+        Você é o "Oracle QueryBot", um assistente especialista em soluções Oracle Cloud Infrastructure (OCI). Sua principal função é analisar as necessidades dos clientes e recomendar serviços OCI específicos, destacando o valor e os diferenciais técnicos, especialmente em comparação com concorrentes.
+
+        ### RECURSOS OFICIAIS:
+        • Preços e Comparações: https://www.oracle.com/cloud/pricing/
+        • Cost Estimator (BR): https://www.oracle.com/br/cloud/costestimator.html
+        • Documentação: https://docs.oracle.com/en/
+        • Casos de Sucesso: https://www.oracle.com/customers/
+        • Análises Independentes: Gartner, Forrester, IDC, GigaOm (para citação)
+        """
+    },
+    'querryarc': {
+        'name': 'Oracle QueryArc',
+        'instructions': """
+        Você é o "QueryArc", um Arquiteto de Soluções Sênior especialista em Oracle Cloud Infrastructure. PERSONA: Mentor experiente, técnico, educado e focado em desenhar soluções enterprise completas.
+
+        ### RECURSOS OFICIAIS:
+        • Casos de Sucesso: https://www.oracle.com/customers/
+        • Cost Estimator: https://www.oracle.com/br/cloud/costestimator.html
+        • Base de Arquiteturas: https://docs.oracle.com/solutions/
+        """
+    }
+}
+
+def format_urls_as_markdown(text):
+    import re
+    url_pattern = r'(?<!\]\()(?<![\[\(])(https?://[^\s\)]+)'
+    def replace_url(match):
+        url = match.group(1)
+        url = url.rstrip('.,;:!?"\'')
+        if url.startswith('['):
+            return match.group(0)
+        return f'[{url}]({url})'
+    result = re.sub(url_pattern, replace_url, text)
+    result = re.sub(r'(\[https?://[^\]]+\]\(https?://[^\)\s]+)(?!\))', r'\1)', result)
+    return result
+
+def generate_ai_response(user_message, bot_id, chat_id):
+    """Generates a bot response using Google Generative AI (merged logic)."""
+    bot_config = bot_configs.get(bot_id, {'name': bot_id, 'instructions': ''})
+    # init chat history for id
+    if chat_id not in chat_history:
+        chat_history[chat_id] = []
+    # append user message
+    user_msg = {'id': len(chat_history[chat_id]), 'text': user_message, 'sender': 'user', 'bot_id': bot_id, 'chat_id': chat_id}
+    chat_history[chat_id].append(user_msg)
+
+    # build context
+    chat_context = ''
+    if len(chat_history[chat_id]) > 1:
+        for msg in chat_history[chat_id][:-1]:
+            role = 'Usuário' if msg['sender'] == 'user' else 'Assistente'
+            chat_context += f"{role}: {msg['text']}\n"
+        chat_context += '\n'
+
+    full_prompt = f"""INSTRUÇÕES: {bot_config.get('instructions', '')}\n\n{chat_context}Usuário: {user_message}\n\nAssistente:"""
+
+    model_name = getattr(config, 'GOOGLE_AI_MODEL', None)
+    if not model_name:
+        raise RuntimeError('GOOGLE_AI_MODEL não configurado')
+
+    model = genai.GenerativeModel(model_name)
+    response = model.generate_content(full_prompt)
+    if not response or not getattr(response, 'text', None):
+        raise Exception('Resposta vazia da IA')
+    bot_response = response.text.strip()
+    bot_response = format_urls_as_markdown(bot_response)
+
+    # append bot message to history
+    bot_msg = {'id': len(chat_history[chat_id]), 'text': bot_response, 'sender': 'bot', 'bot_id': bot_id, 'bot_name': bot_config.get('name'), 'chat_id': chat_id}
+    chat_history[chat_id].append(bot_msg)
+
+    return bot_response
 
 # App config
 app = Flask(__name__)
@@ -203,28 +295,15 @@ def chat():
     if new_message is None:
         return jsonify({"error": "`new_message` deve ser uma string"}), 400
 
-    # Try to obtain a response from the lightweight AI server (api.py)
-    api_port = int(os.environ.get('API_PORT', getattr(config, 'BACKEND_PORT', 5000) + 1))
-    api_url = f"http://127.0.0.1:{api_port}/api/chat"
+    # Generate response using unified local AI generator (no external HTTP call)
     bot_response = None
-
     try:
-        payload = {"message": new_message, "bot_id": bot_name, "chat_id": chat_id or 'default'}
-        print(f"[app.py] Calling {api_url} with payload: {payload}")
-        resp = requests.post(api_url, json=payload, timeout=60)
-        print(f"[app.py] Response status: {resp.status_code}")
-        if resp.status_code == 200:
-            response_data = resp.json()
-            print(f"[app.py] Response data keys: {response_data.keys()}")
-            # api.py returns {'message': text, 'bot_name': name, 'chat_id': id, 'bot_id': id}
-            bot_response = response_data.get('message') or response_data.get('response')
-            print(f"[app.py] Extracted bot_response length: {len(bot_response) if bot_response else 0}")
-        else:
-            print(f"[app.py] Lightweight API returned status {resp.status_code}")
-            app.logger.warning(f"Lightweight API returned status {resp.status_code}")
+        print(f"[app.py] Generating response locally for bot {bot_name}, chat {chat_id}")
+        bot_response = generate_ai_response(new_message, bot_name, chat_id or 'default')
+        print(f"[app.py] Generated bot_response length: {len(bot_response) if bot_response else 0}")
     except Exception as e:
-        print(f"[app.py] Error calling lightweight API at {api_url}: {e}")
-        app.logger.warning(f"Error calling lightweight API at {api_url}: {e}")
+        print(f"[app.py] Error generating AI response locally: {e}")
+        app.logger.warning(f"Error generating AI response locally: {e}")
 
     # Fallback to simple echo if external API failed
     if not bot_response:
