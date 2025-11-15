@@ -346,6 +346,22 @@ def update_title(chat_id):
     return jsonify({"message": "Título atualizado"}), 200
 
 
+# Public test endpoint (no auth) to quickly validate AI responses during deployment/testing
+@app.route('/api/test-chat', methods=['POST'])
+def test_chat():
+    data = request.get_json() or {}
+    bot_name = data.get('bot_name', 'querrybot')
+    message = data.get('message')
+    chat_id = data.get('chat_id', 'test')
+    if not message:
+        return jsonify({"error": "message is required"}), 400
+    try:
+        resp = generate_ai_response(message, bot_name, chat_id)
+        return jsonify({"message": resp, "bot_name": bot_name, "chat_id": chat_id}), 200
+    except Exception as e:
+        return jsonify({"error": "AI generation failed", "details": str(e)}), 500
+
+
 if __name__ == '__main__':
     port = getattr(config, 'BACKEND_PORT', 5000)
     debug = getattr(config, 'DEBUG_MODE', True)
