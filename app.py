@@ -211,7 +211,7 @@ def chat():
     try:
         payload = {"message": new_message, "bot_id": bot_name, "chat_id": chat_id or 'default'}
         print(f"[app.py] Calling {api_url} with payload: {payload}")
-        resp = requests.post(api_url, json=payload, timeout=10)
+        resp = requests.post(api_url, json=payload, timeout=60)
         print(f"[app.py] Response status: {resp.status_code}")
         if resp.status_code == 200:
             response_data = resp.json()
