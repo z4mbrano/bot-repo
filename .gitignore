@@ -1,0 +1,24 @@
+# --- Ambiente Virtual ---
+# Ignora a pasta do ambiente virtual (venv) que contém todas as 
+# bibliotecas (Flask, Google AI, etc.).
+venv/
+
+# --- Arquivos de Ambiente (Segredos) ---
+# Ignora o arquivo .env que contém suas chaves de API secretas
+# (GOOGLE_API_KEY, etc.). Este é o mais importante!
+.env
+
+# --- Cache e Bytecode do Python ---
+# Ignora as pastas de cache geradas automaticamente pelo Python.
+__pycache__/
+*.pyc
+
+# --- Configurações de IDE/Editor ---
+# Ignora pastas de configuração específicas do seu editor de código.
+.vscode/
+.idea/
+
+# --- Arquivos do Sistema Operacional ---
+# Ignora arquivos "lixo" gerados pelo macOS e Windows.
+.DS_Store
+Thumbs.db
